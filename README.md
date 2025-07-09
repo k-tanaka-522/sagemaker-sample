@@ -117,7 +117,7 @@ aws sts get-caller-identity
 
 ```bash
 # 1. このリポジトリをダウンロード
-git clone <this-repo>
+git clone https://github.com/k-tanaka-522/sagemaker-sample.git
 cd sagemaker-sample
 
 # 2. デプロイ実行（約10分）
