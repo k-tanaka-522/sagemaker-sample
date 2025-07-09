@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'SageMaker IAM Role Stack - Manages execution permissions and policies'
+
+# ========================================
+# パラメータセクション
+# ========================================
+Parameters:
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+  
+  Environment:
+    Type: String
+    Description: 'Environment name (development/staging/production)'
+  
+  DefaultS3Bucket:
+    Type: String
+    Default: ''
+    Description: 'Default S3 bucket name (optional)'
+
+# ========================================
+# 条件セクション
+# ========================================
+Conditions:
+  # S3バケットが指定されているかチェック
+  HasDefaultS3Bucket: !Not [!Equals [!Ref DefaultS3Bucket, '']]
+
+# ========================================
+# リソースセクション
+# ========================================
+Resources:
+  # SageMaker実行用IAMロール
+  SageMakerExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-${Environment}-sagemaker-execution-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # SageMakerサービスがこのロールを引き受けることを許可
+          - Effect: Allow
+            Principal:
+              Service:
+                - sagemaker.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        # SageMakerの基本的な実行権限
+        - 'arn:aws:iam::aws:policy/AmazonSageMakerFullAccess'
+      Policies:
+        # カスタムポリシー
+        - PolicyName: !Sub '${ProjectName}-${Environment}-sagemaker-custom-policy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # CloudWatchLogsへのアクセス権限
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:PutLogEvents'
+                  - 'logs:GetLogEvents'
+                Resource:
+                  - !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/sagemaker/*'
+              
+              # ECRへのアクセス権限（カスタムコンテナ使用時）
+              - Effect: Allow
+                Action:
+                  - 'ecr:GetAuthorizationToken'
+                  - 'ecr:BatchCheckLayerAvailability'
+                  - 'ecr:GetDownloadUrlForLayer'
+                  - 'ecr:BatchGetImage'
+                Resource: '*'
+              
+              # VPCエンドポイントへのアクセス権限
+              - Effect: Allow
+                Action:
+                  - 'ec2:CreateNetworkInterface'
+                  - 'ec2:CreateNetworkInterfacePermission'
+                  - 'ec2:DeleteNetworkInterface'
+                  - 'ec2:DeleteNetworkInterfacePermission'
+                  - 'ec2:DescribeNetworkInterfaces'
+                  - 'ec2:DescribeVpcs'
+                  - 'ec2:DescribeDhcpOptions'
+                  - 'ec2:DescribeSubnets'
+                  - 'ec2:DescribeSecurityGroups'
+                  - 'ec2:DescribeRouteTables'
+                Resource: '*'
+              
+              # KMSへのアクセス権限（暗号化使用時）
+              - Effect: Allow
+                Action:
+                  - 'kms:CreateGrant'
+                  - 'kms:Decrypt'
+                  - 'kms:DescribeKey'
+                  - 'kms:GenerateDataKey'
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'sagemaker.${AWS::Region}.amazonaws.com'
+        
+        # S3バケットへのアクセスポリシー（条件付き）
+        - !If
+          - HasDefaultS3Bucket
+          - PolicyName: !Sub '${ProjectName}-${Environment}-s3-access-policy'
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                # 指定されたS3バケットへのフルアクセス
+                - Effect: Allow
+                  Action:
+                    - 's3:GetObject'
+                    - 's3:PutObject'
+                    - 's3:DeleteObject'
+                    - 's3:ListBucket'
+                  Resource:
+                    - !Sub 'arn:aws:s3:::${DefaultS3Bucket}'
+                    - !Sub 'arn:aws:s3:::${DefaultS3Bucket}/*'
+                # SageMakerデフォルトバケットへのアクセス
+                - Effect: Allow
+                  Action:
+                    - 's3:GetObject'
+                    - 's3:PutObject'
+                    - 's3:DeleteObject'
+                    - 's3:ListBucket'
+                  Resource:
+                    - !Sub 'arn:aws:s3:::sagemaker-${AWS::Region}-${AWS::AccountId}'
+                    - !Sub 'arn:aws:s3:::sagemaker-${AWS::Region}-${AWS::AccountId}/*'
+          - !Ref 'AWS::NoValue'
+      
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-sagemaker-execution-role'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+# ========================================
+# 出力セクション
+# ========================================
+Outputs:
+  SageMakerExecutionRoleArn:
+    Description: 'SageMaker execution IAM role ARN'
+    Value: !GetAtt SageMakerExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-SageMakerExecutionRoleArn'
+  
+  SageMakerExecutionRoleName:
+    Description: 'SageMaker execution IAM role name'
+    Value: !Ref SageMakerExecutionRole
+    Export:
+      Name: !Sub '${AWS::StackName}-SageMakerExecutionRoleName'

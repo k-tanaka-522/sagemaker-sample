@@ -1,0 +1,22 @@
+[
+  {
+    "ParameterKey": "NotebookInstanceName",
+    "ParameterValue": "my-sagemaker-notebook"
+  },
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "ml.t3.medium"
+  },
+  {
+    "ParameterKey": "AllowedIpRange",
+    "ParameterValue": "0.0.0.0/0"
+  },
+  {
+    "ParameterKey": "Environment",
+    "ParameterValue": "development"
+  },
+  {
+    "ParameterKey": "ProjectName",
+    "ParameterValue": "sagemaker-demo"
+  }
+]

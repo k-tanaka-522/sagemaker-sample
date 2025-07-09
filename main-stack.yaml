@@ -1,0 +1,225 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'SageMaker Main Stack - Simplified nested stack configuration'
+
+# ========================================
+# パラメータセクション（シンプル版）
+# ========================================
+Parameters:
+  # SageMaker関連のパラメータ
+  NotebookInstanceName:
+    Type: String
+    Default: 'MySageMakerNotebook'
+    Description: 'Name of the SageMaker notebook instance'
+    MinLength: 1
+    MaxLength: 63
+    AllowedPattern: '[a-zA-Z0-9](-*[a-zA-Z0-9])*'
+    ConstraintDescription: 'Must contain only alphanumeric characters and hyphens (max 63 characters)'
+  
+  InstanceType:
+    Type: String
+    Default: 'ml.t3.medium'
+    Description: 'Type of the notebook instance'
+    AllowedValues:
+      - ml.t3.medium
+      - ml.t3.large
+      - ml.t3.xlarge
+      - ml.t3.2xlarge
+      - ml.m5.xlarge
+      - ml.m5.2xlarge
+      - ml.m5.4xlarge
+      - ml.p3.2xlarge
+      - ml.p3.8xlarge
+    ConstraintDescription: 'Please select from available instance types'
+  
+  # セキュリティ関連のパラメータ
+  AllowedIpRange:
+    Type: String
+    Default: '0.0.0.0/0'
+    Description: 'IP address range allowed to access the notebook (CIDR format)'
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+    ConstraintDescription: 'Must be a valid CIDR format'
+  
+  # データ関連のパラメータ
+  DefaultS3Bucket:
+    Type: String
+    Default: ''
+    Description: 'Default S3 bucket name (optional)'
+  
+  VolumeSize:
+    Type: Number
+    Default: 30
+    MinValue: 5
+    MaxValue: 16384
+    Description: 'EBS volume size (GB)'
+  
+  # タグ関連のパラメータ
+  Environment:
+    Type: String
+    Default: 'development'
+    Description: 'Environment name (development/staging/production)'
+    AllowedValues:
+      - development
+      - staging
+      - production
+  
+  ProjectName:
+    Type: String
+    Default: 'sagemaker-demo'
+    Description: 'Project name'
+
+# ========================================
+# リソースセクション（シンプル版）
+# ========================================
+Resources:
+  # VPC用のネストスタック（常に新規作成）
+  VpcStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${AWS::AccountId}-cfn-templates.s3.${AWS::Region}.amazonaws.com/sagemaker/templates/vpc-stack.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName      # main-stackパラメータから取得
+        Environment: !Ref Environment      # main-stackパラメータから取得
+        VpcCidr: '10.0.0.0/16'            # 固定値（初心者向け）
+        AvailabilityZone: !Select [0, !GetAZs '']  # 自動的に最初のAZを選択
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-vpc-stack'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # IAMロール用のネストスタック
+  IamRoleStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${AWS::AccountId}-cfn-templates.s3.${AWS::Region}.amazonaws.com/sagemaker/templates/iam-role-stack.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName      # main-stackパラメータから取得
+        Environment: !Ref Environment      # main-stackパラメータから取得
+        DefaultS3Bucket: !Ref DefaultS3Bucket  # main-stackパラメータから取得
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-iam-role-stack'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # セキュリティグループ用のネストスタック
+  SecurityGroupStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VpcStack
+    Properties:
+      TemplateURL: !Sub 'https://${AWS::AccountId}-cfn-templates.s3.${AWS::Region}.amazonaws.com/sagemaker/templates/security-group-stack.yaml'
+      Parameters:
+        VpcId: !GetAtt VpcStack.Outputs.VpcId  # VPCスタックの出力から取得
+        AllowedIpRange: !Ref AllowedIpRange  # main-stackパラメータから取得
+        ProjectName: !Ref ProjectName      # main-stackパラメータから取得
+        Environment: !Ref Environment      # main-stackパラメータから取得
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-security-group-stack'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # カスタムリソース用のネストスタック（Lambda関数など）
+  CustomResourceStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub 'https://${AWS::AccountId}-cfn-templates.s3.${AWS::Region}.amazonaws.com/sagemaker/templates/custom-resource-stack.yaml'
+      Parameters:
+        ProjectName: !Ref ProjectName      # main-stackパラメータから取得
+        Environment: !Ref Environment      # main-stackパラメータから取得
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-custom-resource-stack'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+  
+  # SageMakerノートブック用のネストスタック
+  SageMakerNotebookStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - IamRoleStack
+      - SecurityGroupStack
+      - CustomResourceStack
+    Properties:
+      TemplateURL: !Sub 'https://${AWS::AccountId}-cfn-templates.s3.${AWS::Region}.amazonaws.com/sagemaker/templates/sagemaker-notebook-stack.yaml'
+      Parameters:
+        NotebookInstanceName: !Ref NotebookInstanceName  # main-stackパラメータから取得
+        InstanceType: !Ref InstanceType          # main-stackパラメータから取得
+        SubnetId: !GetAtt VpcStack.Outputs.PrivateSubnetId  # VPCスタックの出力から取得
+        SecurityGroupId: !GetAtt SecurityGroupStack.Outputs.SecurityGroupId  # SecurityGroupStackの出力から取得
+        IamRoleArn: !GetAtt IamRoleStack.Outputs.SageMakerExecutionRoleArn  # IamRoleStackの出力から取得
+        VolumeSize: !Ref VolumeSize            # main-stackパラメータから取得
+        DefaultS3Bucket: !Ref DefaultS3Bucket      # main-stackパラメータから取得
+        CustomResourceServiceToken: !GetAtt CustomResourceStack.Outputs.CustomResourceServiceToken  # CustomResourceStackの出力から取得
+        ProjectName: !Ref ProjectName          # main-stackパラメータから取得
+        Environment: !Ref Environment          # main-stackパラメータから取得
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-sagemaker-notebook-stack'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+
+# ========================================
+# 出力セクション（シンプル版）
+# ========================================
+Outputs:
+  # VPC関連の出力
+  VpcId:
+    Description: 'VPC ID created by this stack'
+    Value: !GetAtt VpcStack.Outputs.VpcId
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcId'
+  
+  PrivateSubnetId:
+    Description: 'Private subnet ID created by this stack'
+    Value: !GetAtt VpcStack.Outputs.PrivateSubnetId
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateSubnetId'
+  
+  # ノートブックインスタンス関連の出力
+  NotebookInstanceId:
+    Description: 'SageMaker notebook instance ID'
+    Value: !GetAtt SageMakerNotebookStack.Outputs.NotebookInstanceId
+    Export:
+      Name: !Sub '${AWS::StackName}-NotebookInstanceId'
+  
+  NotebookInstanceName:
+    Description: 'SageMaker notebook instance name'
+    Value: !GetAtt SageMakerNotebookStack.Outputs.NotebookInstanceName
+    Export:
+      Name: !Sub '${AWS::StackName}-NotebookInstanceName'
+  
+  NotebookInstanceUrl:
+    Description: 'SageMaker notebook instance URL'
+    Value: !GetAtt SageMakerNotebookStack.Outputs.NotebookInstanceUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-NotebookInstanceUrl'
+  
+  # IAMロール関連の出力
+  SageMakerExecutionRoleArn:
+    Description: 'SageMaker execution IAM role ARN'
+    Value: !GetAtt IamRoleStack.Outputs.SageMakerExecutionRoleArn
+    Export:
+      Name: !Sub '${AWS::StackName}-SageMakerExecutionRoleArn'
+  
+  # セキュリティグループ関連の出力
+  SecurityGroupId:
+    Description: 'Security group ID for SageMaker notebook'
+    Value: !GetAtt SecurityGroupStack.Outputs.SecurityGroupId
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroupId'
+  
+  # 使用ガイド
+  QuickStartGuide:
+    Description: 'Quick start guide for accessing your notebook'
+    Value: !Sub 'Access your notebook at: https://console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/notebook-instances/${NotebookInstanceName}'

@@ -1,0 +1,150 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security Group Stack - Network security configuration for SageMaker'
+
+# ========================================
+# パラメータセクション
+# ========================================
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: 'VPC ID for the security group'
+  
+  AllowedIpRange:
+    Type: String
+    Description: 'Allowed IP address range in CIDR format'
+  
+  ProjectName:
+    Type: String
+    Description: 'Project name'
+  
+  Environment:
+    Type: String
+    Description: 'Environment name'
+
+# ========================================
+# リソースセクション
+# ========================================
+Resources:
+  # SageMakerノートブック用セキュリティグループ
+  # このセキュリティグループは、ノートブックインスタンスへのアクセスを制御する
+  SageMakerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${Environment}-sagemaker-sg'
+      GroupDescription: 'Security group for SageMaker notebook instances'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # HTTPS (443) - Jupyter Notebookへのアクセス
+        # 指定されたIPアドレス範囲からのHTTPSアクセスを許可
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: !Ref AllowedIpRange
+          Description: 'HTTPS access to Jupyter Notebook from allowed IP range'
+        
+        # HTTP (80) - 必要に応じてHTTPアクセスも許可（通常はHTTPSにリダイレクト）
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref AllowedIpRange
+          Description: 'HTTP access from allowed IP range (redirects to HTTPS)'
+      
+      SecurityGroupEgress:
+        # すべてのアウトバウンドトラフィックを許可
+        # SageMakerがインターネット上のリソース（S3、ECR等）にアクセスできるようにする
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: 'Allow all outbound traffic'
+      
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-sagemaker-sg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Purpose
+          Value: 'SageMaker Notebook Instance Security'
+  
+  # VPCエンドポイント用セキュリティグループ（オプション）
+  # プライベートサブネットでSageMakerを使用する場合に必要
+  VpcEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-${Environment}-vpc-endpoint-sg'
+      GroupDescription: 'Security group for VPC endpoints used by SageMaker'
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # HTTPS (443) - VPCエンドポイントへのアクセス
+        # SageMakerセキュリティグループからのアクセスを許可
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !Ref SageMakerSecurityGroup
+          Description: 'HTTPS access from SageMaker security group'
+      
+      SecurityGroupEgress:
+        # すべてのアウトバウンドトラフィックを許可
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: 'Allow all outbound traffic'
+      
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-${Environment}-vpc-endpoint-sg'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Purpose
+          Value: 'VPC Endpoint Security'
+  
+  # セキュリティグループの自己参照ルール
+  # 同じセキュリティグループ内のリソース間の通信を許可
+  SageMakerSecurityGroupSelfReference:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SageMakerSecurityGroup
+      IpProtocol: -1
+      SourceSecurityGroupId: !Ref SageMakerSecurityGroup
+      Description: 'Allow all traffic from instances using the same security group'
+  
+  # セキュリティグループのカスタムルール（例：特定のポート範囲）
+  # 機械学習フレームワークが使用する可能性のあるポート
+  SageMakerSecurityGroupCustomPorts:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref SageMakerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8888
+      ToPort: 8898
+      CidrIp: !Ref AllowedIpRange
+      Description: 'Custom ports for ML frameworks (Jupyter Lab, TensorBoard, etc.)'
+
+# ========================================
+# 出力セクション
+# ========================================
+Outputs:
+  SecurityGroupId:
+    Description: 'Security group ID for SageMaker notebook instances'
+    Value: !Ref SageMakerSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroupId'
+  
+  SecurityGroupName:
+    Description: 'Security group name'
+    Value: !Sub '${ProjectName}-${Environment}-sagemaker-sg'
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroupName'
+  
+  VpcEndpointSecurityGroupId:
+    Description: 'Security group ID for VPC endpoints'
+    Value: !Ref VpcEndpointSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcEndpointSecurityGroupId'
+  
+  AllowedIpRange:
+    Description: 'Configured allowed IP range'
+    Value: !Ref AllowedIpRange
+    Export:
+      Name: !Sub '${AWS::StackName}-AllowedIpRange'
