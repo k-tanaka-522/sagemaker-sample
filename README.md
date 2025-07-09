@@ -472,19 +472,14 @@ aws cloudformation delete-stack \
   --region ap-northeast-1
 
 # 複数のスタックを削除する場合
-# 1つ目のスタックを削除
+# 1つ目のノートブック（開発用）を削除
 aws cloudformation delete-stack \
   --stack-name sagemaker-notebook-dev \
   --region ap-northeast-1
 
-# 2つ目のスタックを削除
+# 2つ目のノートブック（本番用）を削除
 aws cloudformation delete-stack \
   --stack-name sagemaker-notebook-prod \
-  --region ap-northeast-1
-
-# デュアルスタックを削除
-aws cloudformation delete-stack \
-  --stack-name sagemaker-dual-notebooks \
   --region ap-northeast-1
 ```
 
@@ -541,14 +536,14 @@ aws cloudformation create-stack \
   --region ap-northeast-1
 ```
 
-**方法B: デュアルスタックで一度に2つ作成（上級者向け）**
+**方法B: ネストスタックで作成（上級者向け）**
 
 ```bash
-# 1つのスタックで2つのノートブックを作成
+# ネストスタック構成で作成
 aws cloudformation create-stack \
-  --stack-name sagemaker-dual-notebooks \
-  --template-body file://main-stack-dual-notebooks.yaml \
-  --parameters file://dual-notebooks-parameters.json \
+  --stack-name sagemaker-notebook-nested \
+  --template-body file://main-stack.yaml \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=nested-notebook \
   --capabilities CAPABILITY_NAMED_IAM \
   --region ap-northeast-1
 ```
@@ -586,23 +581,47 @@ aws sagemaker list-notebook-instances \
 より柔軟で管理しやすい構成を求める場合は、以下のネストスタック構成も利用できます：
 
 ```
-templates/
 ├── main-stack.yaml                    # メインスタック
+├── simple-stack.yaml                  # シンプルな単一ファイル版
 ├── templates/
 │   ├── vpc-stack.yaml                # VPC・サブネット管理
 │   ├── iam-role-stack.yaml           # IAMロール管理
 │   ├── security-group-stack.yaml     # セキュリティグループ管理
 │   ├── custom-resource-stack.yaml    # カスタムリソース（Lambda）
 │   └── sagemaker-notebook-stack.yaml # SageMakerノートブック
+└── README.md                          # 詳細な使用方法とガイド
 ```
 
 ### ネストスタックの利点
 - **モジュール化**: 各コンポーネントを独立して管理
 - **再利用性**: 他のプロジェクトでも部分的に再利用可能
 - **保守性**: 変更時の影響範囲を限定
+- **スケーラビリティ**: 大規模な環境でも管理しやすい
 
 ### 利用方法
-詳細は `main-stack.yaml` とその関連ファイルを参照してください。
+
+#### 事前準備（S3バケットの作成）
+```bash
+# テンプレート格納用のS3バケットを作成
+aws s3 mb s3://$(aws sts get-caller-identity --query Account --output text)-cfn-templates --region ap-northeast-1
+
+# テンプレートファイルをS3にアップロード
+aws s3 cp templates/ s3://$(aws sts get-caller-identity --query Account --output text)-cfn-templates/sagemaker/templates/ --recursive --region ap-northeast-1
+```
+
+#### デプロイ
+```bash
+# ネストスタックでデプロイ
+aws cloudformation create-stack \
+  --stack-name sagemaker-nested-example \
+  --template-body file://main-stack.yaml \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=nested-notebook \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
+```
+
+**なぜS3が必要？**
+ネストスタックでは、子テンプレートをS3に配置する必要があります。これにより、CloudFormationが各テンプレートにアクセスできるようになります。
 
 ## 🔧 トラブルシューティング
 
