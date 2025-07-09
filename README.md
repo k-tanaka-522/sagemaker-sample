@@ -2,7 +2,7 @@
 
 このリポジトリは、AWS CloudFormationを使ってSageMakerノートブックインスタンスを簡単にデプロイするサンプルです。
 
-## 🎯 このサンプルで何ができるか
+## 🎯 内容
 
 **SageMakerノートブック**という機械学習の開発環境を、AWSクラウド上に自動で構築できます。
 
@@ -16,111 +16,23 @@
 - AWSのSageMakerを試してみたい方
 - CloudFormationの基本的な使い方を学びたい方
 
-## 🚀 クイックスタート（初心者向け）
+## 🚀 使い方コマンド（網羅版）
 
-### Step 1: 事前準備
-
-#### 1.1 AWSアカウントの取得
-- [AWS公式サイト](https://aws.amazon.com/)でアカウント作成
-- クレジットカードの登録が必要
-
-#### 1.2 AWS CLIのインストールと設定
-
-**Windowsの場合:**
-```bash
-# AWS CLIのインストール
-winget install Amazon.AWSCLI
-
-# またはインストーラーをダウンロード
-# https://awscli.amazonaws.com/AWSCLIV2.msi
-```
-
-**macOSの場合:**
-```bash
-# Homebrewを使用
-brew install awscli
-
-# または直接インストール
-curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
-sudo installer -pkg AWSCLIV2.pkg -target /
-```
-
-**Linuxの場合:**
-```bash
-# 最新版をインストール
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install
-```
-
-#### 1.3 AWS CLIの設定
-
-**アクセスキーの取得:**
-1. AWSコンソールにログイン
-2. 「IAM」サービスを開く
-3. 「ユーザー」→あなたのユーザー名をクリック
-4. 「セキュリティ認証情報」タブをクリック
-5. 「アクセスキーの作成」をクリック
-6. 「AWS CLI」を選択してアクセスキーを作成
-
-**AWS CLIの設定コマンド:**
-```bash
-# 設定コマンドを実行
-aws configure
-
-# 以下の情報を入力してください：
-# AWS Access Key ID [None]: あなたのアクセスキーID
-# AWS Secret Access Key [None]: あなたのシークレットアクセスキー
-# Default region name [None]: ap-northeast-1  # 東京リージョン
-# Default output format [None]: json
-```
-
-**設定の確認:**
-```bash
-# 設定が正しくできているか確認
-aws sts get-caller-identity
-
-# 以下のような出力が表示されれば成功：
-# {
-#     "UserId": "AIDAXXXXXXXXXXXXXXXX",
-#     "Account": "123456789012",
-#     "Arn": "arn:aws:iam::123456789012:user/your-username"
-# }
-```
-
-#### 1.4 必要な権限の設定
-
-このサンプルを実行するためには、以下の権限が必要です：
-
-```json
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "cloudformation:*",
-                "sagemaker:*",
-                "ec2:*",
-                "iam:*",
-                "logs:*"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-```
-
-📝 **初心者の方へ**: 最初は管理者権限で始めて、慢れてきたら必要最小限の権限に変更することをおすすめします。
-
-### Step 2: 簡単デプロイ
-
+### 準備
 ```bash
 # 1. このリポジトリをダウンロード
 git clone https://github.com/k-tanaka-522/sagemaker-sample.git
 cd sagemaker-sample
 
-# 2. デプロイ実行（約10分）
+# 2. AWS認証確認
+aws sts get-caller-identity
+```
+
+### デプロイ
+
+#### 基本デプロイ（初心者向け）
+```bash
+# シンプルな1ファイル構成
 aws cloudformation create-stack \
   --stack-name my-sagemaker-notebook \
   --template-body file://simple-stack.yaml \
@@ -128,129 +40,53 @@ aws cloudformation create-stack \
   --capabilities CAPABILITY_NAMED_IAM \
   --region ap-northeast-1
 
-# 3. デプロイ完了を待つ
+# 完了を待つ
 aws cloudformation wait stack-create-complete \
   --stack-name my-sagemaker-notebook \
   --region ap-northeast-1
-
-# 4. 結果を確認
-aws cloudformation describe-stacks \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query 'Stacks[0].Outputs'
 ```
 
-### 🔍 デプロイプロセスの詳細解説
-
-#### ステップバイステップで何が起こっているか
-
-**1. VPCの作成（約1分）**
+#### 複数ノートブック
 ```bash
-# 進行状況を確認
-aws cloudformation describe-stack-events \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query 'StackEvents[?ResourceType==`AWS::EC2::VPC`].[Timestamp,ResourceStatus,ResourceStatusReason]' \
-  --output table
-```
-- あなた専用のネットワーク環境を作成
-- IPアドレス範囲（10.0.0.0/16）を設定
+# 1つ目
+aws cloudformation create-stack \
+  --stack-name sagemaker-notebook-first \
+  --template-body file://simple-stack.yaml \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=dev-notebook \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
 
-**2. サブネットとルーティングの作成（約1分）**
-```bash
-# サブネットの作成状況を確認
-aws cloudformation describe-stack-events \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query 'StackEvents[?ResourceType==`AWS::EC2::Subnet`].[Timestamp,ResourceStatus]' \
-  --output table
-```
-- パブリックサブネットの作成
-- インターネットへの経路設定
-
-**3. セキュリティグループの作成（約30秒）**
-```bash
-# セキュリティグループの作成状況を確認
-aws cloudformation describe-stack-events \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query 'StackEvents[?ResourceType==`AWS::EC2::SecurityGroup`].[Timestamp,ResourceStatus]' \
-  --output table
-```
-- HTTPSアテクセスのみ許可するファイアウォール設定
-
-**4. IAMロールの作成（約30秒）**
-```bash
-# IAMロールの作成状況を確認
-aws cloudformation describe-stack-events \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query 'StackEvents[?ResourceType==`AWS::IAM::Role`].[Timestamp,ResourceStatus]' \
-  --output table
-```
-- SageMakerが他のAWSサービスを使えるように権限設定
-
-**5. SageMakerノートブックインスタンスの作成（約5-7分）**
-```bash
-# SageMakerノートブックの作成状況を確認
-aws cloudformation describe-stack-events \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query 'StackEvents[?ResourceType==`AWS::SageMaker::NotebookInstance`].[Timestamp,ResourceStatus,ResourceStatusReason]' \
-  --output table
-```
-- メインの機械学習環境を作成
-- このステップが最も時間がかかります
-
-#### デプロイ状況のリアルタイム監視
-
-```bash
-# 全体の進行状況を確認
-aws cloudformation describe-stacks \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query 'Stacks[0].StackStatus'
-
-# 最新のイベントを表示（リアルタイム監視）
-watch -n 10 'aws cloudformation describe-stack-events \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query "StackEvents[0:3].[Timestamp,ResourceType,ResourceStatus,ResourceStatusReason]" \
-  --output table'
+# 2つ目
+aws cloudformation create-stack \
+  --stack-name sagemaker-notebook-second \
+  --template-body file://simple-stack.yaml \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=prod-notebook \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
 ```
 
-#### デプロイ中に発生しうるステータス
-
-| ステータス | 意味 | 続行時間 |
-|---------|------|----------|
-| `CREATE_IN_PROGRESS` | 作成中 | 5-10分 |
-| `CREATE_COMPLETE` | 作成完了 | - |
-| `CREATE_FAILED` | 作成失敗 | - |
-| `ROLLBACK_IN_PROGRESS` | ロールバック中 | 2-5分 |
-
-#### デプロイ完了の確認
-
+#### ネストスタック（上級者向け）
 ```bash
-# デプロイ完了後の出力を確認
-aws cloudformation describe-stacks \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1 \
-  --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue,Description]' \
-  --output table
+# S3バケット作成
+aws s3 mb s3://$(aws sts get-caller-identity --query Account --output text)-cfn-templates --region ap-northeast-1
+
+# テンプレートアップロード
+aws s3 cp templates/ s3://$(aws sts get-caller-identity --query Account --output text)-cfn-templates/sagemaker/templates/ --recursive --region ap-northeast-1
+
+# デプロイ
+aws cloudformation create-stack \
+  --stack-name sagemaker-nested-example \
+  --template-body file://main-stack.yaml \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=nested-notebook \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
 ```
 
-このコマンドで以下の情報が表示されます：
-- **NotebookInstanceName**: 作成されたノートブックの名前
-- **JupyterURL**: JupyterノートブックへのアクセスURL
-- **VpcId**: 作成されたVPCのID
-- **ImportantNote**: コストに関する重要な注意事項
+### アクセス
 
-### Step 3: アクセス方法
-
-#### 3.1 デプロイ完了後の確認
-
+#### URL取得
 ```bash
-# デプロイ完了後、アクセスURLを取得
+# デプロイ完了後、アクセス情報を取得
 aws cloudformation describe-stacks \
   --stack-name my-sagemaker-notebook \
   --region ap-northeast-1 \
@@ -258,38 +94,13 @@ aws cloudformation describe-stacks \
   --output table
 ```
 
-このコマンドで以下のようなURLが表示されます：
+#### アクセス方法
+1. **AWSコンソール経由（推奨）**: 上記の`JupyterURL`をブラウザで開く
+2. **直接アクセス**: `JupyterLabURL`を直接ブラウザで開く
 
-```
-+-------------------+----------------------------------------------------------------+
-|   OutputKey       |                    OutputValue                                 |
-+-------------------+----------------------------------------------------------------+
-| JupyterURL        | https://console.aws.amazon.com/sagemaker/home?region=ap-...   |
-| DirectJupyterURL  | https://my-first-sagemaker-notebook.notebook.ap-northeast-... |
-| JupyterLabURL     | https://my-first-sagemaker-notebook.notebook.ap-northeast-... |
-+-------------------+----------------------------------------------------------------+
-```
-
-#### 3.2 アクセス方法（推奨手順）
-
-**方法A: AWSコンソール経由（初心者推奨）**
-
-1. **上記の`JupyterURL`をブラウザで開く**
-2. **AWSコンソールにログイン**
-3. **ノートブックインスタンスのステータスが「InService」であることを確認**
-4. **「Open JupyterLab」ボタンをクリック**
-
-**方法B: 直接アクセス（上級者向け）**
-
-1. **上記の`JupyterLabURL`をブラウザで直接開く**
-2. **AWSアカウントでログインしてあることを確認**
-
-#### 3.3 アクセス時の注意事項
-
-⚠️ **アクセスできない場合のチェックポイント**
-
+#### 状態確認
 ```bash
-# ノートブックインスタンスの状態を確認
+# ノートブックの状態確認
 aws sagemaker describe-notebook-instance \
   --notebook-instance-name my-first-sagemaker-notebook \
   --region ap-northeast-1 \
@@ -297,39 +108,67 @@ aws sagemaker describe-notebook-instance \
   --output table
 ```
 
-- ✅ **`InService`**: アクセス可能状態
-- ⏳ **`Pending`**: 起動中（あと3-5分待つ）
-- ⛔ **`Stopped`**: 停止中（再開が必要）
-- ❌ **`Failed`**: エラー発生（ログ確認が必要）
+### 管理
 
-#### 3.4 アクセス成功時の画面
+#### 停止・再開
+```bash
+# 停止
+aws sagemaker stop-notebook-instance \
+  --notebook-instance-name my-first-sagemaker-notebook \
+  --region ap-northeast-1
 
-アクセスが成功すると、以下のようなJupyterLab環境が表示されます：
+# 再開
+aws sagemaker start-notebook-instance \
+  --notebook-instance-name my-first-sagemaker-notebook \
+  --region ap-northeast-1
+```
 
-- ✅ **左サイドバー**: ファイルブラウザ
-- ✅ **メインエリア**: コードエディター
-- ✅ **SageMaker Examples**: AWS公式サンプルコードが利用可能
-- ✅ **プリインストールライブラリ**: TensorFlow、PyTorch、Scikit-learnなど
+#### 削除
 
-#### 3.5 初回アクセス時のおすすめアクション
+##### 基本削除
+```bash
+# 単一スタック削除
+aws cloudformation delete-stack \
+  --stack-name my-sagemaker-notebook \
+  --region ap-northeast-1
+```
 
-1. **サンプルノートブックを開く**
-   - `SageMaker Examples` → `Introduction to Machine Learning` → `Getting Started`
+##### 複数削除
+```bash
+# 複数のスタックを個別に削除
+aws cloudformation delete-stack --stack-name sagemaker-notebook-dev --region ap-northeast-1
+aws cloudformation delete-stack --stack-name sagemaker-notebook-prod --region ap-northeast-1
+```
 
-2. **新しいノートブックを作成**
-   - `+` ボタン → `Python 3` カーネルを選択
+##### 一括削除
+```bash
+# sagemaker関連スタックを全て削除
+for stack in $(aws cloudformation list-stacks \
+  --region ap-northeast-1 \
+  --query 'StackSummaries[?contains(StackName, `sagemaker`) && StackStatus != `DELETE_COMPLETE`].StackName' \
+  --output text); do
+  echo "Deleting stack: $stack"
+  aws cloudformation delete-stack --stack-name $stack --region ap-northeast-1
+done
+```
 
-3. **簡単なコードを実行してテスト**
-   ```python
-   import pandas as pd
-   import numpy as np
-   import sagemaker
-   
-   print("SageMakerノートブックが正常に動作しています!")
-   print(f"SageMakerバージョン: {sagemaker.__version__}")
-   ```
+#### 状態監視
+```bash
+# デプロイ状態確認
+aws cloudformation describe-stacks \
+  --stack-name my-sagemaker-notebook \
+  --region ap-northeast-1 \
+  --query 'Stacks[0].StackStatus'
 
-## 📊 アーキテクチャ図
+# リアルタイム監視
+watch -n 10 'aws cloudformation describe-stack-events \
+  --stack-name my-sagemaker-notebook \
+  --region ap-northeast-1 \
+  --query "StackEvents[0:3].[Timestamp,ResourceType,ResourceStatus,ResourceStatusReason]" \
+  --output table'
+```
+
+## 📊 アーキテクチャ
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -354,15 +193,12 @@ aws sagemaker describe-notebook-instance \
 │  │                                                     │   │
 │  │  ┌─────────────────────────────────────────────┐   │   │
 │  │  │        Security Group                       │   │   │
-│  │  │                                             │   │   │
 │  │  │  - HTTPSアクセス許可 (ポート443)           │   │   │
-│  │  │  - Jupyter Notebookへの安全なアクセス      │   │   │
 │  │  └─────────────────────────────────────────────┘   │   │
 │  └─────────────────────────────────────────────────────┘   │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │                IAM Role                             │   │
-│  │                                                     │   │
 │  │  - SageMakerの実行権限                             │   │
 │  │  - S3、CloudWatch等へのアクセス権限                │   │
 │  └─────────────────────────────────────────────────────┘   │
@@ -371,69 +207,21 @@ aws sagemaker describe-notebook-instance \
                                 │ HTTPS (443)
                                 │
                       ┌─────────────────┐
-                      │                 │
                       │   あなたのPC     │
-                      │                 │
                       │  ブラウザから    │
                       │  Jupyter接続     │
-                      │                 │
                       └─────────────────┘
 ```
 
-## 💡 各コンポーネントの説明（作成順序）
+### 作成されるコンポーネント
+- **VPC**: あなた専用のネットワーク環境
+- **インターネットゲートウェイ**: VPCとインターネットを繋ぐ出入り口
+- **パブリックサブネット**: インターネットからアクセス可能なエリア
+- **セキュリティグループ**: HTTPS（ポート443）のみ許可のファイアウォール
+- **IAMロール**: SageMakerがAWSサービスを使う時の権限
+- **SageMakerノートブック**: 機械学習の開発環境（メイン）
 
-### 1. VPC (Virtual Private Cloud) 🏠
-- **役割**: あなた専用のネットワーク環境
-- **なぜ必要**: 外部からの不正アクセスを防ぐため
-- **設定**: プライベートIPアドレス範囲（10.0.0.0/16）
-- **作成時間**: 約30秒
-
-### 2. インターネットゲートウェイ 🌐
-- **役割**: VPCとインターネットを繋ぐ出入り口
-- **なぜ必要**: ノートブックにインターネットからアクセスするため
-- **設定**: 自動設定
-- **作成時間**: 約30秒
-
-### 3. パブリックサブネット 📍
-- **役割**: インターネットからアクセス可能なエリア
-- **なぜ必要**: Jupyter Notebookにブラウザからアクセスするため
-- **設定**: VPCの一部（10.0.1.0/24）
-- **作成時間**: 約30秒
-
-### 4. ルートテーブルとルート 🗺️
-- **役割**: ネットワークの道筋を決める設定
-- **なぜ必要**: サブネットからインターネットへの経路を作るため
-- **設定**: インターネットゲートウェイ経由で全ての通信を許可
-- **作成時間**: 約30秒
-
-### 5. セキュリティグループ 🔒
-- **役割**: ファイアウォール（通信の許可・拒否）
-- **なぜ必要**: 必要な通信のみを許可して安全性を確保
-- **設定**: HTTPS（ポート443）のみ許可
-- **作成時間**: 約30秒
-
-### 6. IAMロール 🔑
-- **役割**: SageMakerがAWSサービスを使う時の権限
-- **なぜ必要**: データの読み書きやログ出力に必要
-- **設定**: SageMakerの基本権限（S3、CloudWatch等）
-- **作成時間**: 約30秒
-
-### 7. SageMakerノートブックインスタンス 📊
-- **役割**: 機械学習の開発環境（メインコンポーネント）
-- **なぜ必要**: コードを書いて実行するため
-- **設定**: 
-  - インスタンスタイプ: ml.t3.medium（小さなサイズ）
-  - ストレージ: 20GB
-  - サンプルコード: AWS公式リポジトリが自動で利用可能
-- **作成時間**: 約5-7分（最も時間がかかる）
-
-### 🔄 作成順序の理由
-1. **ネットワーク基盤から作成**: VPC→サブネット→ルーティング
-2. **セキュリティ設定**: セキュリティグループでアクセス制御
-3. **権限設定**: IAMロールでサービス間の権限を設定
-4. **メインサービス**: 最後にSageMakerノートブックを作成
-
-## 💰 コスト情報
+## 💰 料金
 
 ### 想定コスト（東京リージョン）
 - **SageMakerノートブック（ml.t3.medium）**: 約 $0.06/時間
@@ -444,142 +232,151 @@ aws sagemaker describe-notebook-instance \
 1. **使わない時は停止**: インスタンスを停止すればコンピューティング費用は発生しません
 2. **不要になったら削除**: スタック全体を削除すれば全てのリソースが削除されます
 
-## 🛠️ 使い方
+---
 
-### ノートブックインスタンスの操作
+## 📚 詳細説明（上記で分からない人向け）
 
-#### 停止方法
+### AWS CLIの初期設定
+
+#### インストール
+
+**Windowsの場合:**
 ```bash
-# コマンドラインから停止
-aws sagemaker stop-notebook-instance \
-  --notebook-instance-name my-first-sagemaker-notebook \
-  --region ap-northeast-1
+winget install Amazon.AWSCLI
 ```
 
-#### 再開方法
+**macOSの場合:**
 ```bash
-# コマンドラインから再開
-aws sagemaker start-notebook-instance \
-  --notebook-instance-name my-first-sagemaker-notebook \
-  --region ap-northeast-1
+brew install awscli
 ```
 
-#### 削除方法
+**Linuxの場合:**
 ```bash
-# シンプルスタックを削除
-aws cloudformation delete-stack \
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+```
+
+#### 認証設定
+
+**アクセスキーの取得:**
+1. AWSコンソールにログイン
+2. 「IAM」サービスを開く
+3. 「ユーザー」→あなたのユーザー名をクリック
+4. 「セキュリティ認証情報」タブをクリック
+5. 「アクセスキーの作成」をクリック
+6. 「AWS CLI」を選択してアクセスキーを作成
+
+**AWS CLIの設定:**
+```bash
+aws configure
+# AWS Access Key ID [None]: あなたのアクセスキーID
+# AWS Secret Access Key [None]: あなたのシークレットアクセスキー
+# Default region name [None]: ap-northeast-1  # 東京リージョン
+# Default output format [None]: json
+```
+
+**設定確認:**
+```bash
+aws sts get-caller-identity
+```
+
+#### 必要なIAM権限
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "cloudformation:*",
+                "sagemaker:*",
+                "ec2:*",
+                "iam:*",
+                "logs:*"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+```
+
+### デプロイプロセス詳細
+
+#### 作成順序と時間
+1. **VPC作成**（約1分）: あなた専用のネットワーク環境
+2. **サブネット・ルーティング作成**（約1分）: インターネットへの経路設定
+3. **セキュリティグループ作成**（約30秒）: HTTPSアクセスのみ許可
+4. **IAMロール作成**（約30秒）: SageMakerの実行権限
+5. **SageMakerノートブック作成**（約5-7分）: メインの機械学習環境
+
+#### デプロイ状況確認方法
+
+**進行状況確認:**
+```bash
+aws cloudformation describe-stack-events \
   --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1
-
-# 複数のスタックを削除する場合
-# 1つ目のノートブック（開発用）を削除
-aws cloudformation delete-stack \
-  --stack-name sagemaker-notebook-dev \
-  --region ap-northeast-1
-
-# 2つ目のノートブック（本番用）を削除
-aws cloudformation delete-stack \
-  --stack-name sagemaker-notebook-prod \
-  --region ap-northeast-1
-```
-
-#### 一括削除スクリプト
-
-```bash
-# 全てのsagemaker関連スタックを一括削除
-for stack in $(aws cloudformation list-stacks \
   --region ap-northeast-1 \
-  --query 'StackSummaries[?contains(StackName, `sagemaker`) && StackStatus != `DELETE_COMPLETE`].StackName' \
-  --output text); do
-  echo "Deleting stack: $stack"
-  aws cloudformation delete-stack --stack-name $stack --region ap-northeast-1
-done
-
-# 削除完了を確認
-aws cloudformation list-stacks \
-  --region ap-northeast-1 \
-  --query 'StackSummaries[?contains(StackName, `sagemaker`)].{Name:StackName,Status:StackStatus}' \
+  --query 'StackEvents[?ResourceType==`AWS::SageMaker::NotebookInstance`].[Timestamp,ResourceStatus,ResourceStatusReason]' \
   --output table
 ```
 
-## 🎓 次のステップ
+**デプロイ中のステータス:**
+- `CREATE_IN_PROGRESS`: 作成中（5-10分）
+- `CREATE_COMPLETE`: 作成完了
+- `CREATE_FAILED`: 作成失敗
+- `ROLLBACK_IN_PROGRESS`: ロールバック中（2-5分）
 
-### 1. サンプルコードを実行
-- 作成されたJupyter Notebookで機械学習のサンプルコードを実行
-- AWS公式のサンプルが自動で利用可能
+### アクセス詳細
 
-### 2. 独自のコードを作成
-- 新しいNotebookを作成して機械学習モデルを開発
-- データの読み込み、前処理、モデル学習、評価を実行
+#### アクセスできない場合のチェック
 
-### 3. 複数のノートブックを作成
-
-#### 3.1 異なるノートブックを作成する方法
-
-**方法A: 複数のシンプルスタックを作成（推奨）**
-
+**ノートブックインスタンスの状態確認:**
 ```bash
-# 1つ目のノートブック（開発用）
-aws cloudformation create-stack \
-  --stack-name sagemaker-notebook-dev \
-  --template-body file://simple-stack.yaml \
-  --parameters ParameterKey=NotebookInstanceName,ParameterValue=dev-notebook \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region ap-northeast-1
-
-# 2つ目のノートブック（本番用）
-aws cloudformation create-stack \
-  --stack-name sagemaker-notebook-prod \
-  --template-body file://simple-stack.yaml \
-  --parameters ParameterKey=NotebookInstanceName,ParameterValue=prod-notebook \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region ap-northeast-1
-```
-
-**方法B: ネストスタックで作成（上級者向け）**
-
-```bash
-# ネストスタック構成で作成
-aws cloudformation create-stack \
-  --stack-name sagemaker-notebook-nested \
-  --template-body file://main-stack.yaml \
-  --parameters ParameterKey=NotebookInstanceName,ParameterValue=nested-notebook \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region ap-northeast-1
-```
-
-#### 3.2 複数ノートブックの利用シーン
-
-- **開発環境と本番環境の分離**
-- **チームメンバー間でのノートブック共有**
-- **異なるプロジェクトや実験の並行実行**
-- **異なるインスタンスタイプでのパフォーマンステスト**
-
-#### 3.3 複数ノートブックの管理
-
-```bash
-# 全てのノートブックスタックを一覧表示
-aws cloudformation list-stacks \
+aws sagemaker describe-notebook-instance \
+  --notebook-instance-name my-first-sagemaker-notebook \
   --region ap-northeast-1 \
-  --query 'StackSummaries[?contains(StackName, `sagemaker-notebook`)].{Name:StackName,Status:StackStatus}' \
-  --output table
-
-# 全てのノートブックインスタンスを一覧表示
-aws sagemaker list-notebook-instances \
-  --region ap-northeast-1 \
-  --query 'NotebookInstances[*].{Name:NotebookInstanceName,Status:NotebookInstanceStatus,InstanceType:InstanceType}' \
+  --query '[NotebookInstanceStatus,Url]' \
   --output table
 ```
 
-### 4. より高度な構成を学ぶ
-- 複数のサブネットを使った構成
-- プライベートサブネットでの実行
-- カスタムセキュリティ設定
+**状態の意味:**
+- ✅ **`InService`**: アクセス可能状態
+- ⏳ **`Pending`**: 起動中（あと3-5分待つ）
+- ⛔ **`Stopped`**: 停止中（再開が必要）
+- ❌ **`Failed`**: エラー発生（ログ確認が必要）
 
-## 📁 上級者向け：ネストスタック構成
+#### 初回アクセス時のおすすめアクション
 
-より柔軟で管理しやすい構成を求める場合は、以下のネストスタック構成も利用できます：
+1. **サンプルノートブックを開く**
+   - `SageMaker Examples` → `Introduction to Machine Learning` → `Getting Started`
 
+2. **新しいノートブックを作成**
+   - `+` ボタン → `Python 3` カーネルを選択
+
+3. **簡単なコードを実行してテスト**
+   ```python
+   import pandas as pd
+   import numpy as np
+   import sagemaker
+   
+   print("SageMakerノートブックが正常に動作しています!")
+   print(f"SageMakerバージョン: {sagemaker.__version__}")
+   ```
+
+### ネストスタック詳細
+
+#### なぜS3が必要？
+ネストスタックでは、子テンプレートをS3に配置する必要があります。これにより、CloudFormationが各テンプレートにアクセスできるようになります。
+
+#### ネストスタックの利点
+- **モジュール化**: 各コンポーネントを独立して管理
+- **再利用性**: 他のプロジェクトでも部分的に再利用可能
+- **保守性**: 変更時の影響範囲を限定
+- **スケーラビリティ**: 大規模な環境でも管理しやすい
+
+#### ファイル構成
 ```
 ├── main-stack.yaml                    # メインスタック
 ├── simple-stack.yaml                  # シンプルな単一ファイル版
@@ -589,45 +386,14 @@ aws sagemaker list-notebook-instances \
 │   ├── security-group-stack.yaml     # セキュリティグループ管理
 │   ├── custom-resource-stack.yaml    # カスタムリソース（Lambda）
 │   └── sagemaker-notebook-stack.yaml # SageMakerノートブック
-└── README.md                          # 詳細な使用方法とガイド
+└── README.md                          # このファイル
 ```
 
-### ネストスタックの利点
-- **モジュール化**: 各コンポーネントを独立して管理
-- **再利用性**: 他のプロジェクトでも部分的に再利用可能
-- **保守性**: 変更時の影響範囲を限定
-- **スケーラビリティ**: 大規模な環境でも管理しやすい
+### 🔧 トラブルシューティング
 
-### 利用方法
+#### よくある問題
 
-#### 事前準備（S3バケットの作成）
-```bash
-# テンプレート格納用のS3バケットを作成
-aws s3 mb s3://$(aws sts get-caller-identity --query Account --output text)-cfn-templates --region ap-northeast-1
-
-# テンプレートファイルをS3にアップロード
-aws s3 cp templates/ s3://$(aws sts get-caller-identity --query Account --output text)-cfn-templates/sagemaker/templates/ --recursive --region ap-northeast-1
-```
-
-#### デプロイ
-```bash
-# ネストスタックでデプロイ
-aws cloudformation create-stack \
-  --stack-name sagemaker-nested-example \
-  --template-body file://main-stack.yaml \
-  --parameters ParameterKey=NotebookInstanceName,ParameterValue=nested-notebook \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region ap-northeast-1
-```
-
-**なぜS3が必要？**
-ネストスタックでは、子テンプレートをS3に配置する必要があります。これにより、CloudFormationが各テンプレートにアクセスできるようになります。
-
-## 🔧 トラブルシューティング
-
-### よくある問題
-
-#### 1. デプロイが失敗する
+**1. デプロイが失敗する**
 ```bash
 # エラー詳細を確認
 aws cloudformation describe-stack-events \
@@ -635,17 +401,86 @@ aws cloudformation describe-stack-events \
   --region ap-northeast-1
 ```
 
-#### 2. Jupyter Notebookにアクセスできない
+**2. Jupyter Notebookにアクセスできない**
 - インスタンスが「InService」状態か確認
 - セキュリティグループの設定を確認
 - 正しいURLを使用しているか確認
 
-#### 3. 権限エラーが発生する
+**3. 権限エラーが発生する**
 - IAMロールの設定を確認
 - 必要な権限が付与されているか確認
 
-### サポート
+#### サポート
 問題が解決しない場合は、AWSのサポートフォーラムや公式ドキュメントを参照してください。
+
+---
+
+## 🎯 サンプル実行は以上です
+
+ここまでで、SageMakerノートブックのデプロイ・アクセス・管理の基本的な流れを体験できました。
+
+## 🚀 運用に向けたブラッシュアップポイント
+
+このサンプルは学習・検証用です。**本格的な運用環境では以下の改善を実装するとベストプラクティスに沿った運用が可能になります：**
+
+### 🔧 デプロイメント改善
+
+| 項目 | 現状 | 改善案 | 理由 |
+|------|------|--------|------|
+| **デプロイ方法** | 手動コマンド実行 | デプロイスクリプト化 | 人的ミスの削減、作業効率化 |
+| **テンプレート管理** | ローカルファイル | S3での管理 | バージョン履歴、差分確認、ロールバック |
+| **環境管理** | 単一環境 | 環境別パラメータファイル | dev/staging/prod環境の分離 |
+| **検証** | 手動確認 | テンプレート自動検証 | 構文エラーやベストプラクティス違反の早期発見 |
+
+### 🛡️ セキュリティ強化
+
+| 項目 | 現状 | 改善案 | 理由 |
+|------|------|--------|------|
+| **機密情報管理** | パラメータファイル | AWS Secrets Manager | APIキーやパスワードの安全な管理 |
+| **暗号化** | 基本設定 | KMS暗号化 | データの保護強化 |
+| **アクセス制御** | 基本的なセキュリティグループ | 詳細なIAMポリシー | 最小権限の原則 |
+| **削除保護** | なし | Stack Policy | 誤削除の防止 |
+
+### 📊 監視・アラート
+
+| 項目 | 現状 | 改善案 | 理由 |
+|------|------|--------|------|
+| **状態監視** | 手動確認 | CloudWatch アラーム | 自動的な問題検知 |
+| **通知** | なし | SNS通知 | 問題発生時の迅速な対応 |
+| **コスト監視** | 手動確認 | コストアラーム | 予算超過の防止 |
+| **ドリフト検出** | なし | 定期的なドリフト検出 | 設定変更の検知 |
+
+### 🚀 CI/CD統合
+
+| 項目 | 現状 | 改善案 | 理由 |
+|------|------|--------|------|
+| **デプロイ** | 手動実行 | GitHub Actions | 自動デプロイ、品質保証 |
+| **テスト** | なし | 自動テスト | 品質保証、リグレッション防止 |
+| **承認プロセス** | なし | プルリクエスト | コードレビュー、変更管理 |
+
+### 💾 バックアップ・復旧
+
+| 項目 | 現状 | 改善案 | 理由 |
+|------|------|--------|------|
+| **バックアップ** | なし | 定期的なスナップショット | データ保護、災害復旧 |
+| **復旧手順** | なし | 復旧スクリプト | 迅速な復旧 |
+
+### 🏗️ 実装優先度
+
+**Phase 1（すぐに実装）:**
+- デプロイスクリプト化
+- 環境別パラメータファイル
+- S3でのテンプレート管理
+
+**Phase 2（中期）:**
+- 監視・アラート設定
+- テンプレート検証
+- バックアップ自動化
+
+**Phase 3（長期）:**
+- CI/CD統合
+- 高度なセキュリティ設定
+- 災害復旧計画
 
 ## 📝 ライセンス
 
