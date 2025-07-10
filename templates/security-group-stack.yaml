@@ -99,27 +99,6 @@ Resources:
         - Key: Purpose
           Value: 'VPC Endpoint Security'
   
-  # セキュリティグループの自己参照ルール
-  # 同じセキュリティグループ内のリソース間の通信を許可
-  SageMakerSecurityGroupSelfReference:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref SageMakerSecurityGroup
-      IpProtocol: -1
-      SourceSecurityGroupId: !Ref SageMakerSecurityGroup
-      Description: 'Allow all traffic from instances using the same security group'
-  
-  # セキュリティグループのカスタムルール（例：特定のポート範囲）
-  # 機械学習フレームワークが使用する可能性のあるポート
-  SageMakerSecurityGroupCustomPorts:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref SageMakerSecurityGroup
-      IpProtocol: tcp
-      FromPort: 8888
-      ToPort: 8898
-      CidrIp: !Ref AllowedIpRange
-      Description: 'Custom ports for ML frameworks (Jupyter Lab, TensorBoard, etc.)'
 
 # ========================================
 # 出力セクション

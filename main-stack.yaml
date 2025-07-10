@@ -2,8 +2,47 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: 'SageMaker Main Stack - Simplified nested stack configuration'
 
 # ========================================
-# パラメータセクション（シンプル版）
+# CloudFormation 専門用語の説明（入門者向け）
 # ========================================
+# 【Parameters】= 入力値
+#   テンプレートを実行する時に指定できる値です。
+#   例：スタック名、インスタンスタイプ、リージョンなど
+#   この値を変更することで、同じテンプレートから異なる設定の環境を作れます。
+#
+# 【Resources】= 作成するAWSリソース
+#   実際に作成されるAWSのサービスを定義します。
+#   例：EC2インスタンス、VPC、IAMロール、SageMakerノートブックなど
+#   ここで定義したリソースがAWS上に実際に作成されます。
+#
+# 【Outputs】= 出力値
+#   作成されたリソースの情報を外部に出力します。
+#   例：作成されたVPCのID、ノートブックのURL、セキュリティグループのIDなど
+#   他のスタックで使用したり、デプロイ後に確認したりできます。
+#
+# 【Nested Stack】= 入れ子のスタック
+#   メインのスタックから他のテンプレートを呼び出す仕組みです。
+#   例：VPC用、IAM用、SageMaker用のテンプレートを分けて管理
+#   大きなシステムを小さな部品に分けて管理しやすくします。
+#
+# 【Tags】= タグ
+#   AWSリソースに付ける名札のような機能です。
+#   例：Environment=production、Project=my-project、Owner=teamA
+#   コスト管理や検索、権限管理に使用できます。
+#
+# 【よく使うCloudFormation構文】
+# !Ref          = 他のパラメータやリソースを参照
+#                 例：!Ref NotebookInstanceName → パラメータの値を取得
+# !GetAtt       = リソースの属性を取得
+#                 例：!GetAtt VpcStack.Outputs.VpcId → VPCスタックの出力値を取得
+# !Sub          = 文字列の置換
+#                 例：!Sub '${ProjectName}-vpc' → ProjectNameの値を埋め込み
+# DependsOn     = リソースの作成順序を指定
+#                 例：DependsOn: VpcStack → VPCスタックの後に作成
+
+# ========================================
+# パラメータセクション（入力値の定義）
+# ========================================
+# ここで定義した値は、デプロイ時に変更できます
 Parameters:
   # SageMaker関連のパラメータ
   NotebookInstanceName:
@@ -68,8 +107,9 @@ Parameters:
     Description: 'Project name'
 
 # ========================================
-# リソースセクション（シンプル版）
+# リソースセクション（実際に作成するAWSサービス）
 # ========================================
+# ここで定義したリソースがAWS上に作成されます
 Resources:
   # VPC用のネストスタック（常に新規作成）
   VpcStack:
@@ -88,6 +128,10 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref ProjectName
+        - Key: StackType
+          Value: 'vpc'
+        - Key: Owner
+          Value: !Ref AWS::StackName
   
   # IAMロール用のネストスタック
   IamRoleStack:
@@ -105,6 +149,10 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref ProjectName
+        - Key: StackType
+          Value: 'iam'
+        - Key: Owner
+          Value: !Ref AWS::StackName
   
   # セキュリティグループ用のネストスタック
   SecurityGroupStack:
@@ -124,22 +172,11 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref ProjectName
+        - Key: StackType
+          Value: 'security'
+        - Key: Owner
+          Value: !Ref AWS::StackName
   
-  # カスタムリソース用のネストスタック（Lambda関数など）
-  CustomResourceStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: !Sub 'https://${AWS::AccountId}-cfn-templates.s3.${AWS::Region}.amazonaws.com/sagemaker/templates/custom-resource-stack.yaml'
-      Parameters:
-        ProjectName: !Ref ProjectName      # main-stackパラメータから取得
-        Environment: !Ref Environment      # main-stackパラメータから取得
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-custom-resource-stack'
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Project
-          Value: !Ref ProjectName
   
   # SageMakerノートブック用のネストスタック
   SageMakerNotebookStack:
@@ -147,18 +184,16 @@ Resources:
     DependsOn:
       - IamRoleStack
       - SecurityGroupStack
-      - CustomResourceStack
     Properties:
       TemplateURL: !Sub 'https://${AWS::AccountId}-cfn-templates.s3.${AWS::Region}.amazonaws.com/sagemaker/templates/sagemaker-notebook-stack.yaml'
       Parameters:
         NotebookInstanceName: !Ref NotebookInstanceName  # main-stackパラメータから取得
         InstanceType: !Ref InstanceType          # main-stackパラメータから取得
-        SubnetId: !GetAtt VpcStack.Outputs.PrivateSubnetId  # VPCスタックの出力から取得
+        SubnetId: !GetAtt VpcStack.Outputs.PublicSubnetId  # パブリックサブネット（学習・デモ用）
         SecurityGroupId: !GetAtt SecurityGroupStack.Outputs.SecurityGroupId  # SecurityGroupStackの出力から取得
         IamRoleArn: !GetAtt IamRoleStack.Outputs.SageMakerExecutionRoleArn  # IamRoleStackの出力から取得
         VolumeSize: !Ref VolumeSize            # main-stackパラメータから取得
         DefaultS3Bucket: !Ref DefaultS3Bucket      # main-stackパラメータから取得
-        CustomResourceServiceToken: !GetAtt CustomResourceStack.Outputs.CustomResourceServiceToken  # CustomResourceStackの出力から取得
         ProjectName: !Ref ProjectName          # main-stackパラメータから取得
         Environment: !Ref Environment          # main-stackパラメータから取得
       Tags:
@@ -168,10 +203,55 @@ Resources:
           Value: !Ref Environment
         - Key: Project
           Value: !Ref ProjectName
+        - Key: NotebookType
+          Value: 'primary'
+        - Key: StackType
+          Value: 'sagemaker'
+        - Key: Owner
+          Value: !Ref AWS::StackName
+
+  # ========================================
+  # 2つ目のノートブック（同じVPC内に追加したい場合）
+  # ========================================
+  # 以下のコメントアウトを外すと、同じVPC内に2つ目のノートブックが作成されます
+  # 
+  # SecondSageMakerNotebookStack:
+  #   Type: AWS::CloudFormation::Stack
+  #   DependsOn:
+  #     - IamRoleStack
+  #     - SecurityGroupStack
+  #     - CustomResourceStack
+  #   Properties:
+  #     TemplateURL: !Sub 'https://${AWS::AccountId}-cfn-templates.s3.${AWS::Region}.amazonaws.com/sagemaker/templates/sagemaker-notebook-stack.yaml'
+  #     Parameters:
+  #       NotebookInstanceName: !Sub '${NotebookInstanceName}-second'  # 2つ目のノートブック名
+  #       InstanceType: !Ref InstanceType
+  #       SubnetId: !GetAtt VpcStack.Outputs.PrivateSubnetId  # 同じVPCのサブネットを使用
+  #       SecurityGroupId: !GetAtt SecurityGroupStack.Outputs.SecurityGroupId  # 同じセキュリティグループを使用
+  #       IamRoleArn: !GetAtt IamRoleStack.Outputs.SageMakerExecutionRoleArn  # 同じIAMロールを使用
+  #       VolumeSize: !Ref VolumeSize
+  #       DefaultS3Bucket: !Ref DefaultS3Bucket
+  #       CustomResourceServiceToken: !GetAtt CustomResourceStack.Outputs.CustomResourceServiceToken
+  #       ProjectName: !Ref ProjectName
+  #       Environment: !Ref Environment
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub '${ProjectName}-second-sagemaker-notebook-stack'
+  #       - Key: Environment
+  #         Value: !Ref Environment
+  #       - Key: Project
+  #         Value: !Ref ProjectName
+  #       - Key: NotebookType
+  #         Value: 'secondary'
+  #       - Key: StackType
+  #         Value: 'sagemaker'
+  #       - Key: Owner
+  #         Value: !Ref AWS::StackName
 
 # ========================================
-# 出力セクション（シンプル版）
+# 出力セクション（作成されたリソースの情報）
 # ========================================
+# デプロイ後にこれらの情報を確認できます
 Outputs:
   # VPC関連の出力
   VpcId:
@@ -223,3 +303,26 @@ Outputs:
   QuickStartGuide:
     Description: 'Quick start guide for accessing your notebook'
     Value: !Sub 'Access your notebook at: https://console.aws.amazon.com/sagemaker/home?region=${AWS::Region}#/notebook-instances/${NotebookInstanceName}'
+
+  # ========================================
+  # 2つ目のノートブック用の出力（コメントアウト）
+  # ========================================
+  # 2つ目のノートブックを追加した場合は、以下のコメントアウトも外してください
+  # 
+  # SecondNotebookInstanceId:
+  #   Description: 'Second SageMaker notebook instance ID'
+  #   Value: !GetAtt SecondSageMakerNotebookStack.Outputs.NotebookInstanceId
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}-SecondNotebookInstanceId'
+  # 
+  # SecondNotebookInstanceName:
+  #   Description: 'Second SageMaker notebook instance name'
+  #   Value: !GetAtt SecondSageMakerNotebookStack.Outputs.NotebookInstanceName
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}-SecondNotebookInstanceName'
+  # 
+  # SecondNotebookInstanceUrl:
+  #   Description: 'Second SageMaker notebook instance URL'
+  #   Value: !GetAtt SecondSageMakerNotebookStack.Outputs.NotebookInstanceUrl
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}-SecondNotebookInstanceUrl'

@@ -30,42 +30,7 @@ aws sts get-caller-identity
 
 ### デプロイ
 
-#### 基本デプロイ（初心者向け）
-```bash
-# シンプルな1ファイル構成
-aws cloudformation create-stack \
-  --stack-name my-sagemaker-notebook \
-  --template-body file://simple-stack.yaml \
-  --parameters file://simple-parameters.json \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region ap-northeast-1
-
-# 完了を待つ
-aws cloudformation wait stack-create-complete \
-  --stack-name my-sagemaker-notebook \
-  --region ap-northeast-1
-```
-
-#### 複数ノートブック
-```bash
-# 1つ目
-aws cloudformation create-stack \
-  --stack-name sagemaker-notebook-first \
-  --template-body file://simple-stack.yaml \
-  --parameters ParameterKey=NotebookInstanceName,ParameterValue=dev-notebook \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region ap-northeast-1
-
-# 2つ目
-aws cloudformation create-stack \
-  --stack-name sagemaker-notebook-second \
-  --template-body file://simple-stack.yaml \
-  --parameters ParameterKey=NotebookInstanceName,ParameterValue=prod-notebook \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region ap-northeast-1
-```
-
-#### ネストスタック（上級者向け）
+#### 基本デプロイ
 ```bash
 # S3バケット作成
 aws s3 mb s3://$(aws sts get-caller-identity --query Account --output text)-cfn-templates --region ap-northeast-1
@@ -75,12 +40,58 @@ aws s3 cp templates/ s3://$(aws sts get-caller-identity --query Account --output
 
 # デプロイ
 aws cloudformation create-stack \
-  --stack-name sagemaker-nested-example \
+  --stack-name my-sagemaker-notebook \
   --template-body file://main-stack.yaml \
-  --parameters ParameterKey=NotebookInstanceName,ParameterValue=nested-notebook \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=my-notebook \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
+
+# 完了を待つ
+aws cloudformation wait stack-create-complete \
+  --stack-name my-sagemaker-notebook \
+  --region ap-northeast-1
+```
+
+#### 複数ノートブック（同じVPC内）
+
+**方法A: 別々のスタックで作成**
+```bash
+# 1つ目のノートブック
+aws cloudformation create-stack \
+  --stack-name sagemaker-notebook-first \
+  --template-body file://main-stack.yaml \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=first-notebook \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
+
+# 2つ目のノートブック（別のVPCに作成される）
+aws cloudformation create-stack \
+  --stack-name sagemaker-notebook-second \
+  --template-body file://main-stack.yaml \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=second-notebook \
   --capabilities CAPABILITY_NAMED_IAM \
   --region ap-northeast-1
 ```
+
+**方法B: 同じスタック内で作成（推奨）**
+1. `main-stack.yaml` 内の `SecondSageMakerNotebookStack` のコメントアウトを外す
+2. 出力セクションの `SecondNotebook*` のコメントアウトも外す
+3. デプロイを実行
+
+```bash
+# 同じVPC内に2つのノートブックが作成される
+aws cloudformation create-stack \
+  --stack-name sagemaker-dual-notebooks \
+  --template-body file://main-stack.yaml \
+  --parameters ParameterKey=NotebookInstanceName,ParameterValue=team-notebook \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region ap-northeast-1
+```
+
+**方法Bの利点:**
+- 同じVPC、セキュリティグループ、IAMロールを共有
+- コスト効率が良い
+- 管理が簡単
 
 ### アクセス
 
@@ -231,6 +242,46 @@ watch -n 10 'aws cloudformation describe-stack-events \
 ### 💡 コスト削減のポイント
 1. **使わない時は停止**: インスタンスを停止すればコンピューティング費用は発生しません
 2. **不要になったら削除**: スタック全体を削除すれば全てのリソースが削除されます
+
+---
+
+## 🔒 セキュリティ設定について
+
+### サンプルの設定（学習・デモ用）
+
+このサンプルでは **学習・デモ用** として以下の設定を採用しています：
+
+- **パブリックサブネット** - JupyterのWebUIに簡単にアクセス可能
+- **DirectInternetAccess: Enabled** - パッケージダウンロードとWebUIアクセス
+- **RootAccess: Enabled** - 学習用パッケージのインストール
+- **セキュリティグループ** - HTTPSアクセスを許可
+
+### 本番環境向けの追加セキュリティ設定
+
+本番環境では以下の設定を検討してください：
+
+- **プライベートサブネット** - VPCエンドポイント経由でのアクセス
+- **DirectInternetAccess: Disabled** - インターネットアクセスを制限
+- **RootAccess: Disabled** - 管理者権限を制限
+- **VPN/DirectConnect** - 専用線経由でのアクセス
+- **IAM条件付きアクセス** - 特定のIPアドレスからのみアクセス許可
+
+### セキュリティ設定の変更方法
+
+main-stack.yaml内で以下を変更：
+
+```yaml
+# プライベートサブネット使用の場合
+SubnetId: !GetAtt VpcStack.Outputs.PrivateSubnetId
+```
+
+sagemaker-notebook-stack.yaml内で以下を変更：
+
+```yaml
+# セキュリティ強化の場合
+DirectInternetAccess: Disabled
+RootAccess: Disabled
+```
 
 ---
 

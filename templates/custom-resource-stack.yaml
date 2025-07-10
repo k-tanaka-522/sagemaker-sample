@@ -107,6 +107,7 @@ Resources:
           import cfnresponse
           import time
           import logging
+          from botocore.exceptions import ClientError
           
           # ロギングの設定
           logger = logging.getLogger()
@@ -254,7 +255,7 @@ Resources:
                   logger.info(f"Deleting notebook instance: {notebook_name}")
                   sagemaker.delete_notebook_instance(NotebookInstanceName=notebook_name)
                   
-              except sagemaker.exceptions.ClientError as e:
+              except ClientError as e:
                   if e.response['Error']['Code'] == 'RecordNotFound':
                       logger.info(f"Notebook instance {notebook_name} not found, skipping deletion")
                   else:
@@ -282,7 +283,7 @@ Resources:
                       time.sleep(30)  # 30秒待機
                       attempt += 1
                       
-                  except sagemaker.exceptions.ClientError as e:
+                  except ClientError as e:
                       if e.response['Error']['Code'] == 'RecordNotFound' and target_status == 'Deleted':
                           return
                       raise

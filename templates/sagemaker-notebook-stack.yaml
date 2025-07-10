@@ -1,9 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'SageMaker Notebook Stack - Manages SageMaker notebook instances'
+Description: 'SageMaker Notebook Stack - Simple Version for Testing'
 
-# ========================================
-# パラメータセクション
-# ========================================
 Parameters:
   NotebookInstanceName:
     Type: String
@@ -34,10 +31,6 @@ Parameters:
     Default: ''
     Description: 'Default S3 bucket name (optional)'
   
-  CustomResourceServiceToken:
-    Type: String
-    Description: 'Custom resource service token ARN'
-  
   ProjectName:
     Type: String
     Description: 'Project name'
@@ -46,23 +39,11 @@ Parameters:
     Type: String
     Description: 'Environment name'
 
-# ========================================
-# 条件セクション
-# ========================================
-Conditions:
-  # S3バケットが指定されているかチェック
-  HasDefaultS3Bucket: !Not [!Equals [!Ref DefaultS3Bucket, '']]
-
-# ========================================
-# リソースセクション
-# ========================================
 Resources:
-  # SageMakerノートブックインスタンス（カスタムリソース経由）
+  # SageMakerノートブックインスタンス（シンプル版）
   SageMakerNotebookInstance:
-    Type: Custom::SageMakerNotebook
+    Type: AWS::SageMaker::NotebookInstance
     Properties:
-      ServiceToken: !Ref CustomResourceServiceToken
-      # ノートブックインスタンスの設定
       NotebookInstanceName: !Ref NotebookInstanceName
       InstanceType: !Ref InstanceType
       RoleArn: !Ref IamRoleArn
@@ -70,15 +51,12 @@ Resources:
       SecurityGroupIds:
         - !Ref SecurityGroupId
       VolumeSizeInGB: !Ref VolumeSize
+      # パブリックサブネット用設定（学習・デモ用）
+      DirectInternetAccess: Enabled   # WebUIアクセスのため有効化
+      RootAccess: Enabled             # パッケージインストールのため有効化
       
-      # オプション設定
-      DefaultCodeRepository: !If
-        - HasDefaultS3Bucket
-        - !Sub 's3://${DefaultS3Bucket}/notebooks/'
-        - !Ref 'AWS::NoValue'
-      
-      # ライフサイクル設定
-      LifecycleConfigName: !Ref NotebookLifecycleConfig
+      # ライフサイクル設定（オプション）
+      # LifecycleConfigName: !Ref NotebookLifecycleConfig
       
       # タグ設定
       Tags:
@@ -90,157 +68,31 @@ Resources:
           Value: !Ref ProjectName
         - Key: ManagedBy
           Value: CloudFormation
-  
-  # ノートブックのライフサイクル設定
-  NotebookLifecycleConfig:
+
+  # シンプルなライフサイクル設定（オプション）
+  # NotebookLifecycleConfig:
     Type: AWS::SageMaker::NotebookInstanceLifecycleConfig
     Properties:
-      NotebookInstanceLifecycleConfigName: !Sub '${NotebookInstanceName}-lifecycle-config'
-      OnCreate:
-        - Content:
-            Fn::Base64: !Sub |
-              #!/bin/bash
-              set -e
-              
-              # ========================================
-              # 起動時のセットアップスクリプト
-              # ========================================
-              
-              # 環境変数の設定
-              echo "export ENVIRONMENT=${Environment}" >> /home/ec2-user/.bashrc
-              echo "export PROJECT_NAME=${ProjectName}" >> /home/ec2-user/.bashrc
-              echo "export AWS_DEFAULT_REGION=${AWS::Region}" >> /home/ec2-user/.bashrc
-              
-              # JupyterLabの拡張機能をインストール
-              sudo -u ec2-user -i <<'EOF'
-              source /home/ec2-user/anaconda3/bin/activate
-              
-              # Git拡張機能
-              pip install --upgrade jupyterlab-git
-              jupyter labextension install @jupyterlab/git
-              
-              # 変数インスペクター
-              pip install --upgrade lckr-jupyterlab-variableinspector
-              
-              # コード整形ツール
-              pip install --upgrade jupyterlab_code_formatter
-              pip install --upgrade black isort
-              jupyter labextension install @ryantam626/jupyterlab_code_formatter
-              jupyter serverextension enable --py jupyterlab_code_formatter
-              
-              # テーマ
-              jupyter labextension install @jupyterlab/theme-dark-extension
-              jupyter labextension install @jupyterlab/theme-light-extension
-              
-              EOF
-              
-              # カスタムPythonパッケージのインストール
-              sudo -u ec2-user -i <<'EOF'
-              source /home/ec2-user/anaconda3/bin/activate
-              
-              # データサイエンス関連パッケージ
-              pip install --upgrade pandas numpy scikit-learn matplotlib seaborn plotly
-              
-              # AWS関連パッケージ
-              pip install --upgrade boto3 sagemaker awscli
-              
-              # 機械学習フレームワーク
-              pip install --upgrade tensorflow torch torchvision xgboost lightgbm
-              
-              EOF
-              
-              # Gitの設定
-              sudo -u ec2-user -i <<'EOF'
-              git config --global user.name "SageMaker User"
-              git config --global user.email "sagemaker@example.com"
-              git config --global init.defaultBranch main
-              EOF
-              
-              # サンプルノートブックの作成
-              sudo -u ec2-user -i <<'EOF'
-              mkdir -p /home/ec2-user/SageMaker/samples
-              
-              cat > /home/ec2-user/SageMaker/samples/welcome.ipynb <<'NOTEBOOK'
-              {
-               "cells": [
-                {
-                 "cell_type": "markdown",
-                 "metadata": {},
-                 "source": [
-                  "# Welcome to SageMaker Notebook\n",
-                  "\n",
-                  "Environment: ${Environment}\n",
-                  "Project: ${ProjectName}\n",
-                  "\n",
-                  "This notebook instance has the following pre-installed:\n",
-                  "- TensorFlow\n",
-                  "- PyTorch\n",
-                  "- Scikit-learn\n",
-                  "- XGBoost\n",
-                  "- Other data science related libraries"
-                 ]
-                },
-                {
-                 "cell_type": "code",
-                 "execution_count": null,
-                 "metadata": {},
-                 "outputs": [],
-                 "source": [
-                  "import sagemaker\n",
-                  "import boto3\n",
-                  "import pandas as pd\n",
-                  "import numpy as np\n",
-                  "\n",
-                  "# Initialize SageMaker session\n",
-                  "session = sagemaker.Session()\n",
-                  "role = sagemaker.get_execution_role()\n",
-                  "region = boto3.Session().region_name\n",
-                  "\n",
-                  "print(f'SageMaker role ARN: {role}')\n",
-                  "print(f'AWS region: {region}')"
-                 ]
-                }
-               ],
-               "metadata": {
-                "kernelspec": {
-                 "display_name": "Python 3",
-                 "language": "python",
-                 "name": "python3"
-                }
-               },
-               "nbformat": 4,
-               "nbformat_minor": 4
-              }
-              NOTEBOOK
-              
-              EOF
-              
-              echo "Notebook setup completed successfully!"
-      
+      NotebookInstanceLifecycleConfigName: !Sub '${NotebookInstanceName}-lifecycle'
       OnStart:
         - Content:
             Fn::Base64: !Sub |
               #!/bin/bash
               set -e
               
-              # ========================================
-              # 起動時の処理
-              # ========================================
+              # 基本的な環境変数設定
+              echo "export PROJECT_NAME=${ProjectName}" >> /home/ec2-user/.bashrc
+              echo "export ENVIRONMENT=${Environment}" >> /home/ec2-user/.bashrc
               
-              # CloudWatchログの設定
-              echo "Setting up CloudWatch logging..."
-              
-              # JupyterLabの設定を更新
+              # Gitの基本設定
               sudo -u ec2-user -i <<'EOF'
-              jupyter notebook --generate-config
-              echo "c.NotebookApp.contents_manager_class = 'notebook.services.contents.largefilemanager.LargeFileManager'" >> /home/ec2-user/.jupyter/jupyter_notebook_config.py
+              git config --global user.name "SageMaker User"
+              git config --global user.email "sagemaker@example.com"
+              git config --global init.defaultBranch main
               EOF
               
-              echo "Notebook started successfully!"
+              echo "Basic setup completed!"
 
-# ========================================
-# 出力セクション
-# ========================================
 Outputs:
   NotebookInstanceId:
     Description: 'SageMaker notebook instance ID'
